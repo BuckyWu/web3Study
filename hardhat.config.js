@@ -3,6 +3,7 @@ require("dotenv").config()
 // require("./tasks/deploy_fundme")
 // require("./tasks/intereact_fundme")
 require("./tasks")
+require("hardhat-deploy")
 // require("@chainlink/env-enc").config()
 
 const SEPOLIA_URL = process.env.SEPOLIA_URL
@@ -24,6 +25,14 @@ module.exports = {
   etherscan:{
     apiKey:{
       sepolia:API_KEY
+    }
+  },
+  namedAccounts:{
+    firstAccount:{
+      default:0 //取配置的accounts的第0个元素
+    },
+    secondAccount:{
+      default:1 //取配置的accounts的第1个元素
     }
   }
 };

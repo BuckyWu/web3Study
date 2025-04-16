@@ -10,7 +10,7 @@ contract FundMe{
 
     uint constant MIN_AMOUNT = 1 * 10 ** 16;  // 10^18 wei = 1 ether
 
-    AggregatorV3Interface internal dataFeed;
+    AggregatorV3Interface public dataFeed;
 
     uint256 constant TARGET = 2 * 10 ** 16; 
 
