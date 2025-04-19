@@ -24,8 +24,10 @@ contract FundMe{
 
     bool public getFundSuccess = false;
 
-    constructor(uint _locktime){
-        dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
+    event FundWithdrawByOwner(uint256);
+
+    constructor(uint _locktime,address datafeedAddr){
+        dataFeed = AggregatorV3Interface(datafeedAddr);
         owner = msg.sender;
         deploymentTimestamp = block.timestamp; // 时间戳 单位为s
         locktime = _locktime;
@@ -34,7 +36,7 @@ contract FundMe{
     // payable 表示一个可以支付的函数
     function fundMe() external payable {
         require(convertEthToUSD(msg.value) >= MIN_AMOUNT,"send more eth");
-        // require(block.timestamp < deploymentTimestamp + locktime, "windows is close");
+        require(block.timestamp < deploymentTimestamp + locktime, "windows is close");
         fundToAmount[msg.sender] = msg.value;
     }
 
@@ -77,10 +79,14 @@ contract FundMe{
         // payable (msg.sender).transfer(address(this).balance); 
         //bool success = payable (msg.sender).send(address(this).balance);
         bool success;
-        (success,) = payable (msg.sender).call{value:address(this).balance}("");
+        uint256 banlance = address(this).balance;
+        (success,) = payable (msg.sender).call{value:banlance}("");
         require(success, "transfer tx failed");
         fundToAmount[msg.sender] = 0;
         getFundSuccess = true; // flag
+
+        //emit event  类似于日志打印
+        emit FundWithdrawByOwner(banlance);
     }
 
     function refund() external windowClosed{

@@ -1,0 +1,39 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\n// solhint-disable-next-line interface-starts-with-i\ninterface AggregatorV3Interface {\n  function decimals() external view returns (uint8);\n\n  function description() external view returns (string memory);\n\n  function version() external view returns (uint256);\n\n  function getRoundData(\n    uint80 _roundId\n  ) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);\n\n  function latestRoundData()\n    external\n    view\n    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);\n}\n"
+    },
+    "contracts/FundMe.sol": {
+      "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.20;\r\n\r\nimport {AggregatorV3Interface} from \"@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol\";\r\n\r\n\r\ncontract FundMe{\r\n\r\n    mapping(address => uint256) public fundToAmount;\r\n\r\n    uint constant MIN_AMOUNT = 1 * 10 ** 16;  // 10^18 wei = 1 ether\r\n\r\n    AggregatorV3Interface public dataFeed;\r\n\r\n    uint256 constant TARGET = 2 * 10 ** 16; \r\n\r\n    address public owner;\r\n\r\n    uint256 deploymentTimestamp;\r\n\r\n    uint256 locktime;\r\n\r\n    address erc20Addr;\r\n\r\n    bool public getFundSuccess = false;\r\n\r\n    constructor(uint _locktime,address datafeedAddr){\r\n        dataFeed = AggregatorV3Interface(datafeedAddr);\r\n        owner = msg.sender;\r\n        deploymentTimestamp = block.timestamp; // 时间戳 单位为s\r\n        locktime = _locktime;\r\n    }\r\n\r\n    // payable 表示一个可以支付的函数\r\n    function fundMe() external payable {\r\n        require(convertEthToUSD(msg.value) >= MIN_AMOUNT,\"send more eth\");\r\n        // require(block.timestamp < deploymentTimestamp + locktime, \"windows is close\");\r\n        fundToAmount[msg.sender] = msg.value;\r\n    }\r\n\r\n    /**\r\n     * Returns the latest answer.\r\n     */\r\n    function getChainlinkDataFeedLatestAnswer() public view returns (int) {\r\n        // prettier-ignore\r\n        (\r\n            /* uint80 roundId */,\r\n            int256 answer,\r\n            /*uint256 startedAt*/,\r\n            /*uint256 updatedAt*/,\r\n            /*uint80 answeredInRound*/\r\n        ) = dataFeed.latestRoundData();\r\n        return answer;\r\n    }\r\n\r\n    // ethamount的单位是wei   ethPrice的单位是10^8 USD / ETH\r\n    // (wei * 10^8 USD / ETH )  / (10 ^ 18 wei / ETH)   单位是 10^8 usd / 10 ^ 18\r\n    // 10 ^ 8 是chainlink在设计时会扩大这个倍数满足精度需求，所以要除以这个数得到真实值\r\n    // 分母的10 ^ 18 在这个过程中没有计算所以相当于扩大了10 ^ 18，因此在比较时右边也需要扩大相应倍数才对，所以最小值 目标值都乘以这个数\r\n    function convertEthToUSD(uint ethAmount) internal  view returns (uint256){\r\n        uint256 ethPrice = uint256(getChainlinkDataFeedLatestAnswer());\r\n        return ethAmount * ethPrice / (10 ** 8);\r\n    }\r\n\r\n    // owner的转换\r\n    function transferOwnership(address newOwner) public ownership{\r\n        owner = newOwner;\r\n    }\r\n\r\n    // 转账的三种方式\r\n    // transfer 纯转账 转账如果失败就会回滚 transfer eth and revert if tx failed\r\n    // send  纯转账  成功return true 失败return false\r\n    // call  转账过程中调用函数或写数据，也可以纯转账 transfer eth with data return value of function and bool\r\n    // function getFund() external windowClosed ownership{\r\n    function getFund() external {\r\n        // require(convertEthToUSD(address(this).balance) >= TARGET, \"Target is not reached\");\r\n        // payable (msg.sender).transfer(address(this).balance); \r\n        //bool success = payable (msg.sender).send(address(this).balance);\r\n        bool success;\r\n        (success,) = payable (msg.sender).call{value:address(this).balance}(\"\");\r\n        require(success, \"transfer tx failed\");\r\n        fundToAmount[msg.sender] = 0;\r\n        getFundSuccess = true; // flag\r\n    }\r\n\r\n    function refund() external windowClosed{\r\n        require(convertEthToUSD(address(this).balance) < TARGET, \"Target is reached\");\r\n        require(fundToAmount[msg.sender] != 0, \"there is no fund for you\");\r\n        bool success;\r\n        (success, ) = payable(msg.sender).call{value: fundToAmount[msg.sender]}(\"\");\r\n        require(success, \"transfer tx failed\");\r\n        fundToAmount[msg.sender] = 0;\r\n    }\r\n\r\n    \r\n    //暴露方法给外部去修改mapping 这个方法只能ERC20通证合约去调用\r\n    function setNameAndSymbol(address funder, uint amountToUpdate) external{\r\n        require(msg.sender == owner,\"only owner can do this\");\r\n        fundToAmount[funder] = amountToUpdate;  \r\n    }\r\n\r\n    function setErc20Address(address _erc20Addr ) public ownership{\r\n        erc20Addr = _erc20Addr ;\r\n    } \r\n\r\n    //修改器\r\n    modifier windowClosed(){\r\n        require(block.timestamp >= deploymentTimestamp + locktime, \"windows is close\");\r\n        _; // 指的是函数体的执行顺序 若放在require则先执行方法体\r\n    }\r\n\r\n    modifier ownership(){\r\n        require (msg.sender == owner, \"this function can only be called by owner\");\r\n        _; // 指的是函数体的执行顺序 若放在require则先执行方法体\r\n    }\r\n\r\n}"
+    }
+  },
+  "settings": {
+    "evmVersion": "paris",
+    "optimizer": {
+      "enabled": false,
+      "runs": 200
+    },
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}

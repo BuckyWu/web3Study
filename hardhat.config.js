@@ -15,6 +15,9 @@ const PRIVATE_KEY_2 = process.env.PRIVATE_KEY_2
 module.exports = {
   // defaultNetwork: "hardHat", 默认的部署网络
   solidity: "0.8.28",
+  mocha:{
+    timeout:200000
+  },
   networks:{
     sepolia:{
       url:SEPOLIA_URL,

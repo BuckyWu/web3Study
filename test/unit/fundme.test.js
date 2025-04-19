@@ -1,14 +1,21 @@
 const { ethers, getNamedAccounts } = require("hardhat")
-const { assert } = require("chai")
+const { assert, expect } = require("chai")
+const helpers = require("@nomicfoundation/hardhat-network-helpers")
+const {developmentChains} = require("../../helper-hardhat-config")
 
-describe("test fundme contract",async function(){
+
+!developmentChains.includes(network.name)
+? describe.skip
+: describe("test fundme contract",async function(){
     let firstAccount
     let fundMe 
+    let mockV3Aggregator
 
     beforeEach(async function() {
         await deployments.fixture(["all"])
         firstAccount = (await getNamedAccounts()).firstAccount
         const fundMeDeployment = await deployments.get("FundMe")
+        mockV3Aggregator = await deployments.get("MockV3Aggregator")
         fundMe = await ethers.getContractAt("FundMe",fundMeDeployment.address)
     })
 
@@ -31,6 +38,15 @@ describe("test fundme contract",async function(){
         // const fundMeFactory = await ethers.getContractFactory("FundMe")
         // const fundMe = await fundMeFactory.deploy(10)
         // await fundMe.waitForDeployment()
-        assert.equal("0x694AA1769357215DE4FAC081bf1f309aDC325306",await fundMe.dataFeed())
+        assert.equal(mockV3Aggregator.address,await fundMe.dataFeed())
     })
+
+    it("window closed,value greater than minimum,fund failed",
+        async function(){
+            await helpers.time.increase(200)
+            await helpers.mine()
+            expect(fundMe.fundMe({value:ethers.parseEther("0.1")}))
+                .to.be.revertedWith("window is closed")
+        }
+    )
 })
